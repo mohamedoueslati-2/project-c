@@ -1,6 +1,6 @@
 #include <stdio.h>
 #include <string.h>
-#include "login.h"
+#include "admin.h"
 
 void print_header() {
     printf("=====================================\n");
@@ -357,6 +357,63 @@ void manage_resources(Resource *resources, int *resource_count, const char *file
     } while (choice != 4);
 }
 
+void validate_requests(const char *request_filename, const char *resource_filename) {
+    FILE *file = fopen(request_filename, "r+");
+    if (!file) {
+        perror("Could not open file");
+        return;
+    }
+
+    Resource resources[100];
+    int resource_count = read_resources(resource_filename, resources, 100);
+
+    char technician_username[50];
+    char resource_name[50];
+    int quantity;
+    int status;
+    long pos;
+
+    printf("\nList of Requests:\n");
+    while ((pos = ftell(file)) != -1 && fscanf(file, "%49s %49s %d %d", technician_username, resource_name, &quantity, &status) == 4) {
+        if (status == 0) {
+            printf("Technician: %s, Resource: %s, Quantity: %d, Status: Pending\n", technician_username, resource_name, quantity);
+            printf("Approve (1) or Reject (2) this request? ");
+            int choice;
+            scanf("%d", &choice);
+            fseek(file, pos, SEEK_SET);
+            fprintf(file, "%s %s %d %d\n", technician_username, resource_name, quantity, choice);
+            fseek(file, 0, SEEK_CUR);
+
+            if (choice == 1) {
+                // Update resource quantity
+                for (int i = 0; i < resource_count; i++) {
+                    if (strcmp(resources[i].name, resource_name) == 0) {
+                        resources[i].quantity -= quantity;
+                        if (resources[i].quantity < 0) {
+                            resources[i].quantity = 0;
+                        }
+                        resources[i].available = resources[i].quantity > 0 ? 1 : 0;
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    fclose(file);
+
+    // Update the resources file
+    FILE *resource_file = fopen(resource_filename, "w");
+    if (resource_file) {
+        for (int i = 0; i < resource_count; i++) {
+            fprintf(resource_file, "%s %d %d\n", resources[i].name, resources[i].quantity, resources[i].available);
+        }
+        fclose(resource_file);
+    } else {
+        perror("Could not update resources file");
+    }
+}
+
 void display_dashboard(User *user, User *users, int user_count, const char *filename) {
     int choice;
     User technicians[100];
@@ -371,6 +428,7 @@ void display_dashboard(User *user, User *users, int user_count, const char *file
         printf("2. Logout\n");
         printf("3. Manage Technicians\n");
         printf("4. Manage Resources\n");
+        printf("5. Validate Requests\n");
         printf("Enter your choice: ");
         scanf("%d", &choice);
 
@@ -386,6 +444,9 @@ void display_dashboard(User *user, User *users, int user_count, const char *file
                 break;
             case 4:
                 manage_resources(resources, &resource_count, "resources.txt");
+                break;
+            case 5:
+                validate_requests("requests.txt", "resources.txt");
                 break;
             default:
                 printf("Invalid choice. Please try again.\n");
